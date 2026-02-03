@@ -172,9 +172,6 @@ With the accumulated comprehensive data, you can:
 8. **Mileage Impact**: Correlate mileage with price depreciation
 9. **Seasonal Patterns**: Identify seasonal variations in pricing and availability
 10. **Color Popularity**: Analyze which colors are most common and their pricing
-3. Spot underpriced listings
-4. Monitor how long listings typically stay active
-5. Analyze geographic pricing differences (Ireland vs. NI)
 
 ## Support
 
