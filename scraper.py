@@ -54,61 +54,80 @@ def export_to_excel():
     else:
         print("⚠️ Database is empty. No report generated.")
 
-# --- The Scraper Logic ---
+# --- The Scraper Logic (Anti-Block Version) ---
 def scrape_donedeal():
     print("\n🔎 Connecting to DoneDeal...")
-    # Using a broad search to ensure we see results
+    
+    # 1. Broader Search URL (Avoids strict filters that return 0 results)
     url = "https://www.donedeal.ie/coaches?words=sprinter"
     
+    # 2. THE FAKE ID (Headers)
+    # This makes the bot look like a real Chrome Browser on Windows 10
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.5",
+        "Accept-Encoding": "gzip, deflate, br",
+        "Connection": "keep-alive",
+        "Upgrade-Insecure-Requests": "1",
+        "Sec-Fetch-Dest": "document",
+        "Sec-Fetch-Mode": "navigate",
+        "Sec-Fetch-Site": "none",
+        "Sec-Fetch-User": "?1",
+        "Cache-Control": "max-age=0"
     }
     
     try:
-        response = requests.get(url, headers=headers)
-        print(f"📡 Status Code: {response.status_code}") # Should be 200
+        # Add a small delay to be polite
+        time.sleep(2)
         
+        response = requests.get(url, headers=headers)
+        print(f"📡 Status Code: {response.status_code}") 
+        
+        if response.status_code == 403:
+            print("❌ Still blocked (403). DoneDeal needs a stronger bypass.")
+            return
+
         soup = BeautifulSoup(response.text, 'html.parser')
         
-        # 2026 Strategy: Find ALL links and filter for 'minibus' terms
-        # This bypasses specific class names that might change
+        # 3. Universal Link Finder
+        # Finds any link that looks like a commercial vehicle ad
         found_count = 0
         all_links = soup.find_all("a", href=True)
         
         for link in all_links:
             href = link['href']
-            text = link.get_text().lower()
+            text = link.get_text().strip()
             
-            # Filter: Must be a listing URL and contain relevant text
-            if ('/coaches/' in href or '/commercials/' in href) and len(text) > 5:
-                # Construct full URL
-                if not href.startswith('http'):
+            # Filter logic: Must be a coach/bus ad and not a dealer homepage
+            if ('/coaches/' in href or '/commercials/' in href) and len(text) > 10:
+                if 'donedeal.ie' not in href:
                     full_url = "https://www.donedeal.ie" + href
                 else:
                     full_url = href
                 
-                # Simple Price Finder (looks for € symbol in the link text)
-                price = 0
-                if '€' in text:
+                # Check for "Sprinter" in the text to be sure
+                if "sprinter" in text.lower():
+                     # Price Finder
+                    price = 0
                     try:
-                        # Extract numbers from text like "€18,500"
-                        price_str = ''.join(filter(str.isdigit, text))
-                        price = int(price_str)
+                        price_text = [s for s in text.split() if '€' in s]
+                        if price_text:
+                            price = int(''.join(filter(str.isdigit, price_text[0])))
                     except:
                         price = 0
-                
-                # Save it!
-                save_ad(full_url, text.strip()[:50], price, "Check Ad", "DoneDeal")
-                found_count += 1
 
-        print(f"✅ Scan Complete. Found {found_count} potential Sprinters.")
+                    save_ad(full_url, text[:60], price, "Check Ad", "DoneDeal")
+                    found_count += 1
+
+        print(f"✅ Scan Complete. Found {found_count} items.")
 
     except Exception as e:
         print(f"❌ Error: {e}")
 
-# --- THE START BUTTON (Main Execution) ---
+# --- THE START BUTTON ---
 if __name__ == "__main__":
     print("🚀 Bot Started...")
     init_db()
-    scrape_donedeal()  # <--- This was likely missing!
+    scrape_donedeal()
     export_to_excel()
