@@ -36,10 +36,12 @@ SQLite database with all historical listing data:
 - Tracks every ad's lifecycle
 - Records first and last seen dates
 - Marks ads as active/inactive
+- Stores comprehensive vehicle data: year, mileage, seats, fuel type, transmission, color, location, seller type, description
 
 ### Excel Export: `minibus_listings.xlsx`
 Daily snapshot with:
 - All listings (active and inactive)
+- All vehicle data fields for filtering and analysis
 - Duration calculation showing how long each ad has been tracked
 - Easy to analyze in Excel or Google Sheets
 
@@ -78,9 +80,23 @@ This gives you insights into:
 
 The scraper implements responsible web scraping:
 - **Random delays**: 2-5 seconds between requests
-- **User-Agent rotation**: Uses 5 different browser signatures
+- **User-Agent rotation**: Uses 12 different modern browser signatures
 - **Timeout handling**: 30-second timeout per request
 - **Error handling**: Gracefully handles network failures
+- **Retry logic**: Exponential backoff for failed requests (max 3 attempts)
+- **Rate limiting**: Minimum 2 seconds between requests to same domain
+- **Session persistence**: Maintains cookies for natural browsing
+- **Anti-blocking detection**: Handles 403/429 responses automatically
+
+## Collected Data Fields
+
+The scraper extracts the following information for each minibus listing:
+- **Basic Info**: URL, Title, Price
+- **Vehicle Specs**: Year, Mileage, Number of Seats
+- **Technical**: Fuel Type, Transmission
+- **Appearance**: Color
+- **Listing Details**: Location, Seller Type, Description
+- **Tracking**: First Seen Date, Last Seen Date, Active Status
 
 ## Customization
 
@@ -88,6 +104,12 @@ The scraper implements responsible web scraping:
 Edit the `polite_sleep()` call in `scraper.py`:
 ```python
 self.polite_sleep(min_seconds=3.0, max_seconds=7.0)  # Increase for slower scraping
+```
+
+### Modify Retry Attempts
+Change `max_retries` in `make_request_with_retry()`:
+```python
+response = self.make_request_with_retry(url, max_retries=5)  # Default is 3
 ```
 
 ### Change Database Location
@@ -103,10 +125,17 @@ scraper.export_to_excel(output_file="custom_name.xlsx")
 
 ## Troubleshooting
 
+### Getting blocked (403/429 errors)
+- The scraper automatically retries with backoff
+- If persistent, increase sleep intervals to 5-10 seconds
+- Reduce scraping frequency (daily instead of hourly)
+- Check if your IP is temporarily rate-limited
+
 ### No listings found
 - Check internet connectivity
-- Verify website URLs are still valid
+- Verify website URLs are still valid in a browser
 - Websites may have changed their HTML structure
+- Check the console output for error messages
 
 ### Database locked error
 - Close any programs viewing the database
@@ -124,16 +153,25 @@ python test_scraper.py
 ```
 
 This tests:
-- Database initialization
-- CRUD operations
-- Excel export
+- Database initialization with new schema
+- CRUD operations with all data fields
+- Excel export with comprehensive columns
 - Inactive listing detection
+- Anti-blocking components
 
 ## Data Analysis Ideas
 
-With the accumulated data, you can:
-1. Track price trends for similar vehicles
-2. Identify best times to buy (when inventory is high)
+With the accumulated comprehensive data, you can:
+1. **Price Analysis**: Track price trends for similar vehicles by year, mileage, and seats
+2. **Market Timing**: Identify best times to buy when inventory is high
+3. **Value Detection**: Spot underpriced listings based on year/mileage/features
+4. **Duration Analysis**: Monitor how long listings typically stay active
+5. **Geographic Pricing**: Analyze pricing differences between locations (Ireland vs. NI)
+6. **Seller Patterns**: Compare dealer vs. private seller pricing and turnover
+7. **Specification Trends**: Track popular features (fuel type, transmission, seat capacity)
+8. **Mileage Impact**: Correlate mileage with price depreciation
+9. **Seasonal Patterns**: Identify seasonal variations in pricing and availability
+10. **Color Popularity**: Analyze which colors are most common and their pricing
 3. Spot underpriced listings
 4. Monitor how long listings typically stay active
 5. Analyze geographic pricing differences (Ireland vs. NI)
