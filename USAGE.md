@@ -2,17 +2,35 @@
 
 ## What Sites Are Scraped?
 
-The bot scrapes minibus listings from two Irish websites:
+The bot scrapes minibus and coach listings from **six Irish websites**:
 
 1. **DoneDeal (Republic of Ireland)**
-   - URL: https://www.donedeal.ie/cars?bodyType=Minibus
+   - URL: https://www.donedeal.ie/coaches
+   - Category: Coaches & Buses (prioritized over standard cars)
    - Currency: Euro (€)
-   - Listings: Irish minibus classified ads
 
 2. **UsedCarsNI (Northern Ireland)**
    - URL: https://www.usedcarsni.com/search?bodytype=minibus
    - Currency: Pound Sterling (£)
-   - Listings: Northern Ireland used minibuses
+
+3. **Carzone (Republic of Ireland)**
+   - URL: https://www.carzone.ie/commercials/used/mercedes-benz/sprinter
+   - Category: Commercials, Mercedes-Benz Sprinter focus
+   - Currency: Euro (€)
+
+4. **CarsIreland (Republic of Ireland)**
+   - URL: https://www.carsireland.ie/used-cars/minibus
+   - Category: Minibus body-type filter
+   - Currency: Euro (€)
+
+5. **Adverts.ie (Republic of Ireland)**
+   - URL: https://www.adverts.ie/results/minibus
+   - Category: Keyword-based search (popular with private sellers)
+   - Currency: Euro (€)
+
+6. **Autoline24.ie (Republic of Ireland)**
+   - Category: Commercial vehicles
+   - Currency: Euro (€)
 
 ## Quick Start
 
@@ -35,13 +53,18 @@ python scraper.py
    pip3 install --user -r requirements.txt
    ```
 
-3. **Schedule Daily Run**
+3. **Schedule Regular Runs (Recommended: Every 6 Hours)**
    - Go to the "Tasks" tab in PythonAnywhere
-   - Add a new scheduled task:
+   - Add scheduled tasks:
      ```
      python3 /home/yourusername/scraper.py
      ```
-   - Set the time (e.g., 03:00 UTC for daily runs)
+   - **Recommended Schedule:** Run every 6 hours for optimal tracking
+     - 00:00 UTC (midnight)
+     - 06:00 UTC (6am)
+     - 12:00 UTC (noon)
+     - 18:00 UTC (6pm)
+   - This provides 4 scrapes per day across 6 websites = excellent coverage
 
 ## Output Files
 

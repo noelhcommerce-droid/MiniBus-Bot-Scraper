@@ -1,13 +1,14 @@
 # MiniBus-Bot-Scraper
 
-A Python-based web scraper for Irish minibus listings that scrapes comprehensive data from DoneDeal and UsedCarsNI, stores it in a SQLite database, and exports to Excel with duration tracking.
+A Python-based web scraper for Irish minibus and coach listings that scrapes comprehensive data from 6 Irish websites, stores it in a SQLite database, and exports to Excel with duration tracking.
 
 ## Scraped Websites
 
-This bot currently scrapes minibus listings from two Irish websites:
+This bot scrapes minibus and coach listings from **six Irish websites**:
 
-1. **[DoneDeal](https://www.donedeal.ie)** 
-   - URL: `https://www.donedeal.ie/cars?bodyType=Minibus`
+1. **[DoneDeal](https://www.donedeal.ie/coaches)** 
+   - URL: `https://www.donedeal.ie/coaches`
+   - Category: Coaches & Buses (prioritized over standard cars)
    - Coverage: Republic of Ireland
    - Currency: Euro (€)
 
@@ -16,9 +17,33 @@ This bot currently scrapes minibus listings from two Irish websites:
    - Coverage: Northern Ireland
    - Currency: Pound Sterling (£)
 
+3. **[Carzone](https://www.carzone.ie)**
+   - URLs: `https://www.carzone.ie/commercials/used/mercedes-benz/sprinter`
+   - Category: Commercials, Mercedes-Benz Sprinter focus
+   - Coverage: Republic of Ireland
+   - Currency: Euro (€)
+
+4. **[CarsIreland](https://www.carsireland.ie)**
+   - URL: `https://www.carsireland.ie/used-cars/minibus`
+   - Category: Minibus body-type filter
+   - Coverage: Republic of Ireland
+   - Currency: Euro (€)
+
+5. **[Adverts.ie](https://www.adverts.ie)**
+   - URL: `https://www.adverts.ie/results/minibus`
+   - Category: Keyword-based search (minibus)
+   - Coverage: Republic of Ireland
+   - Currency: Euro (€)
+
+6. **[Autoline24.ie](https://www.autoline24.ie)**
+   - Category: Commercial vehicles
+   - Coverage: Republic of Ireland
+   - Currency: Euro (€)
+
 ## Features
 
-- **Multi-source scraping**: Scrapes minibus listings from DoneDeal and UsedCarsNI
+- **Multi-source scraping**: Scrapes minibus and coach listings from 6 Irish websites
+- **Coaches/Buses priority**: Targets coach and bus categories to skip passenger cars
 - **Comprehensive data collection**: Extracts price, year, mileage, number of seats, fuel type, transmission, color, location, seller type, and description
 - **Persistent storage**: Uses SQLite database to track all listings over time
 - **Intelligent tracking**: 
@@ -26,6 +51,7 @@ This bot currently scrapes minibus listings from two Irish websites:
   - Updates existing listings with last_seen date
   - Marks missing listings as inactive
 - **Excel export**: Generates .xlsx file with Duration column showing how long each listing has been active
+- **Recommended schedule**: Run every 6 hours for optimal tracking
 - **Advanced anti-blocking strategies**: 
   - Request retry with exponential backoff
   - Session persistence with cookie handling
@@ -63,10 +89,11 @@ python scraper.py
    ```bash
    pip3 install --user -r requirements.txt
    ```
-3. Schedule a daily task:
+3. Schedule a task (recommended: every 6 hours):
    - Go to the "Tasks" tab
-   - Add a new scheduled task with command: `python3 /home/yourusername/scraper.py`
-   - Set the time for daily execution
+   - Add scheduled tasks with command: `python3 /home/yourusername/scraper.py`
+   - Recommended schedule: Run every 6 hours (00:00, 06:00, 12:00, 18:00 UTC)
+   - This provides 4 scrapes per day for optimal tracking
 
 ## Database Schema
 
