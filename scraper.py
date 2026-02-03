@@ -1,5 +1,5 @@
 import sqlite3
-import requests
+import cloudscraper # <--- The new secret weapon
 import pandas as pd
 from bs4 import BeautifulSoup
 from datetime import datetime
@@ -24,7 +24,6 @@ def save_ad(url, title, price, seats, source):
     c = conn.cursor()
     today = datetime.now().date()
     
-    # Check if exists
     c.execute("SELECT first_seen FROM listings WHERE url=?", (url,))
     row = c.fetchone()
     
@@ -47,51 +46,34 @@ def export_to_excel():
         df['first_seen'] = pd.to_datetime(df['first_seen'])
         df['last_seen'] = pd.to_datetime(df['last_seen'])
         df['days_on_market'] = (df['last_seen'] - df['first_seen']).dt.days
-        
         filename = "Minibus_Market_Tracker.xlsx"
         df.to_excel(filename, index=False)
         print(f"📊 Report Updated: {filename}")
     else:
         print("⚠️ Database is empty. No report generated.")
 
-# --- The Scraper Logic (Anti-Block Version) ---
+# --- The Scraper Logic (CloudScraper Version) ---
 def scrape_donedeal():
-    print("\n🔎 Connecting to DoneDeal...")
+    print("\n🔎 Connecting to DoneDeal (Attempting Bypass)...")
     
-    # 1. Broader Search URL (Avoids strict filters that return 0 results)
+    # 1. Initialize the Scraper
+    scraper = cloudscraper.create_scraper() 
+    
+    # 2. Target URL
     url = "https://www.donedeal.ie/coaches?words=sprinter"
     
-    # 2. THE FAKE ID (Headers)
-    # This makes the bot look like a real Chrome Browser on Windows 10
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.5",
-        "Accept-Encoding": "gzip, deflate, br",
-        "Connection": "keep-alive",
-        "Upgrade-Insecure-Requests": "1",
-        "Sec-Fetch-Dest": "document",
-        "Sec-Fetch-Mode": "navigate",
-        "Sec-Fetch-Site": "none",
-        "Sec-Fetch-User": "?1",
-        "Cache-Control": "max-age=0"
-    }
-    
     try:
-        # Add a small delay to be polite
-        time.sleep(2)
-        
-        response = requests.get(url, headers=headers)
+        # We use scraper.get() instead of requests.get()
+        response = scraper.get(url)
         print(f"📡 Status Code: {response.status_code}") 
         
         if response.status_code == 403:
-            print("❌ Still blocked (403). DoneDeal needs a stronger bypass.")
+            print("❌ BLOCKED. DoneDeal is blocking PythonAnywhere IPs directly.")
+            print("💡 STRATEGY SHIFT: We will switch targets to CarsIreland/Carzone.")
             return
 
         soup = BeautifulSoup(response.text, 'html.parser')
         
-        # 3. Universal Link Finder
-        # Finds any link that looks like a commercial vehicle ad
         found_count = 0
         all_links = soup.find_all("a", href=True)
         
@@ -99,16 +81,13 @@ def scrape_donedeal():
             href = link['href']
             text = link.get_text().strip()
             
-            # Filter logic: Must be a coach/bus ad and not a dealer homepage
             if ('/coaches/' in href or '/commercials/' in href) and len(text) > 10:
                 if 'donedeal.ie' not in href:
                     full_url = "https://www.donedeal.ie" + href
                 else:
                     full_url = href
                 
-                # Check for "Sprinter" in the text to be sure
                 if "sprinter" in text.lower():
-                     # Price Finder
                     price = 0
                     try:
                         price_text = [s for s in text.split() if '€' in s]
@@ -125,7 +104,6 @@ def scrape_donedeal():
     except Exception as e:
         print(f"❌ Error: {e}")
 
-# --- THE START BUTTON ---
 if __name__ == "__main__":
     print("🚀 Bot Started...")
     init_db()
