@@ -28,12 +28,21 @@ class MiniBusScraper:
         """
         self.db_path = db_path
         self.user_agents = [
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:89.0) Gecko/20100101 Firefox/89.0',
-            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.1.1 Safari/605.1.15',
-            'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0',
+            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Safari/605.1.15',
+            'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36 Edg/119.0.0.0',
+            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',
+            'Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:121.0) Gecko/20100101 Firefox/121.0',
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 OPR/106.0.0.0',
+            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:121.0) Gecko/20100101 Firefox/121.0',
+            'Mozilla/5.0 (X11; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/121.0',
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 Vivaldi/6.5.3206.55'
         ]
+        self.session = requests.Session()  # Persistent session for cookie handling
+        self.last_request_time = {}  # Track last request time per domain for rate limiting
         self.init_database()
     
     def init_database(self):
@@ -46,6 +55,15 @@ class MiniBusScraper:
                 url TEXT PRIMARY KEY,
                 title TEXT NOT NULL,
                 price TEXT,
+                year TEXT,
+                mileage TEXT,
+                num_seats TEXT,
+                fuel_type TEXT,
+                transmission TEXT,
+                color TEXT,
+                location TEXT,
+                seller_type TEXT,
+                description TEXT,
                 first_seen_date TEXT NOT NULL,
                 last_seen_date TEXT NOT NULL,
                 is_active INTEGER DEFAULT 1
@@ -58,18 +76,24 @@ class MiniBusScraper:
     
     def get_random_headers(self) -> Dict[str, str]:
         """
-        Generate random headers with User-Agent for politeness.
+        Generate random headers with User-Agent for politeness and to avoid blocking.
         
         Returns:
             Dictionary of HTTP headers
         """
         return {
             'User-Agent': random.choice(self.user_agents),
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-            'Accept-Language': 'en-US,en;q=0.5',
-            'Accept-Encoding': 'gzip, deflate',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.9,en-GB;q=0.8',
+            'Accept-Encoding': 'gzip, deflate, br',
             'Connection': 'keep-alive',
-            'Upgrade-Insecure-Requests': '1'
+            'Upgrade-Insecure-Requests': '1',
+            'Sec-Fetch-Dest': 'document',
+            'Sec-Fetch-Mode': 'navigate',
+            'Sec-Fetch-Site': 'none',
+            'Sec-Fetch-User': '?1',
+            'DNT': '1',
+            'Cache-Control': 'max-age=0'
         }
     
     def polite_sleep(self, min_seconds: float = 2.0, max_seconds: float = 5.0):
@@ -84,9 +108,102 @@ class MiniBusScraper:
         print(f"Sleeping for {sleep_time:.2f} seconds...")
         time.sleep(sleep_time)
     
+    def make_request_with_retry(self, url: str, max_retries: int = 3) -> Optional[requests.Response]:
+        """
+        Make HTTP request with retry logic and exponential backoff.
+        
+        Args:
+            url: URL to request
+            max_retries: Maximum number of retry attempts
+            
+        Returns:
+            Response object or None if all retries failed
+        """
+        from urllib.parse import urlparse
+        
+        # Rate limiting per domain
+        domain = urlparse(url).netloc
+        if domain in self.last_request_time:
+            elapsed = time.time() - self.last_request_time[domain]
+            if elapsed < 2.0:  # Minimum 2 seconds between requests to same domain
+                time.sleep(2.0 - elapsed)
+        
+        for attempt in range(max_retries):
+            try:
+                headers = self.get_random_headers()
+                response = self.session.get(url, headers=headers, timeout=30)
+                
+                # Update last request time for this domain
+                self.last_request_time[domain] = time.time()
+                
+                # Check if we got blocked (common blocking indicators)
+                if response.status_code == 403:
+                    print(f"Access forbidden (403) on attempt {attempt + 1}/{max_retries}")
+                    if attempt < max_retries - 1:
+                        backoff = (2 ** attempt) + random.uniform(0, 1)
+                        print(f"Backing off for {backoff:.2f} seconds...")
+                        time.sleep(backoff)
+                        continue
+                    return None
+                
+                if response.status_code == 429:
+                    print(f"Rate limited (429) on attempt {attempt + 1}/{max_retries}")
+                    if attempt < max_retries - 1:
+                        backoff = (2 ** (attempt + 1)) + random.uniform(0, 2)
+                        print(f"Rate limit backoff for {backoff:.2f} seconds...")
+                        time.sleep(backoff)
+                        continue
+                    return None
+                
+                response.raise_for_status()
+                
+                # Validate response contains HTML
+                content_type = response.headers.get('content-type', '')
+                if 'text/html' not in content_type.lower():
+                    print(f"Warning: Unexpected content-type: {content_type}")
+                
+                return response
+                
+            except requests.RequestException as e:
+                print(f"Request error on attempt {attempt + 1}/{max_retries}: {e}")
+                if attempt < max_retries - 1:
+                    backoff = (2 ** attempt) + random.uniform(0, 1)
+                    print(f"Retrying after {backoff:.2f} seconds...")
+                    time.sleep(backoff)
+                else:
+                    print(f"All {max_retries} attempts failed for {url}")
+                    return None
+        
+        return None
+    
+    def extract_field_from_card(self, card, patterns: List[str], default: str = None) -> Optional[str]:
+        """
+        Extract a field from a listing card using multiple patterns.
+        
+        Args:
+            card: BeautifulSoup element to search in
+            patterns: List of class names or text patterns to try
+            default: Default value if field not found
+            
+        Returns:
+            Extracted text or default value
+        """
+        for pattern in patterns:
+            # Try as class name
+            element = card.find(class_=pattern)
+            if element:
+                return element.get_text(strip=True)
+            
+            # Try as text search
+            element = card.find(string=lambda text: text and pattern.lower() in text.lower())
+            if element:
+                return element.strip()
+        
+        return default
+    
     def scrape_donedeal(self) -> List[Dict[str, str]]:
         """
-        Scrape minibus listings from DoneDeal.
+        Scrape minibus listings from DoneDeal with comprehensive data extraction.
         
         Returns:
             List of dictionaries containing listing data
@@ -97,8 +214,11 @@ class MiniBusScraper:
         
         try:
             print(f"\nScraping DoneDeal: {search_url}")
-            response = requests.get(search_url, headers=self.get_random_headers(), timeout=30)
-            response.raise_for_status()
+            response = self.make_request_with_retry(search_url)
+            
+            if not response:
+                print("Failed to retrieve DoneDeal listings")
+                return listings
             
             soup = BeautifulSoup(response.content, 'html.parser')
             
@@ -109,6 +229,10 @@ class MiniBusScraper:
             if not listing_cards:
                 # Try alternative selectors
                 listing_cards = soup.find_all('div', class_='listing')
+            
+            if not listing_cards:
+                # Try article tags
+                listing_cards = soup.find_all('article')
             
             print(f"Found {len(listing_cards)} potential listings on DoneDeal")
             
@@ -126,15 +250,52 @@ class MiniBusScraper:
                     title = title_tag.get_text(strip=True) if title_tag else "Unknown Title"
                     
                     # Extract price
-                    price_tag = card.find(class_=['price', 'listing-price'])
+                    price_tag = card.find(class_=['price', 'listing-price', 'card__price'])
                     if not price_tag:
                         price_tag = card.find(string=lambda text: text and '€' in text)
-                    price = price_tag.get_text(strip=True) if price_tag else "Price on request"
+                    price = price_tag.get_text(strip=True) if price_tag else None
+                    
+                    # Extract year
+                    year = self.extract_field_from_card(card, ['year', 'reg-year', 'card__year'])
+                    
+                    # Extract mileage
+                    mileage = self.extract_field_from_card(card, ['mileage', 'odometer', 'card__mileage', 'km'])
+                    
+                    # Extract number of seats
+                    num_seats = self.extract_field_from_card(card, ['seats', 'seater', 'capacity'])
+                    
+                    # Extract fuel type
+                    fuel_type = self.extract_field_from_card(card, ['fuel', 'fuel-type', 'diesel', 'petrol'])
+                    
+                    # Extract transmission
+                    transmission = self.extract_field_from_card(card, ['transmission', 'gearbox', 'manual', 'automatic'])
+                    
+                    # Extract color
+                    color = self.extract_field_from_card(card, ['colour', 'color'])
+                    
+                    # Extract location
+                    location = self.extract_field_from_card(card, ['location', 'county', 'area', 'card__county'])
+                    
+                    # Extract seller type
+                    seller_type = self.extract_field_from_card(card, ['seller', 'dealer', 'private', 'trade'])
+                    
+                    # Extract description snippet if available
+                    description_tag = card.find(class_=['description', 'card__description', 'excerpt'])
+                    description = description_tag.get_text(strip=True) if description_tag else None
                     
                     listings.append({
                         'url': url,
                         'title': title,
                         'price': price,
+                        'year': year,
+                        'mileage': mileage,
+                        'num_seats': num_seats,
+                        'fuel_type': fuel_type,
+                        'transmission': transmission,
+                        'color': color,
+                        'location': location,
+                        'seller_type': seller_type,
+                        'description': description,
                         'source': 'DoneDeal'
                     })
                 except Exception as e:
@@ -143,14 +304,14 @@ class MiniBusScraper:
             
             print(f"Successfully extracted {len(listings)} listings from DoneDeal")
             
-        except requests.RequestException as e:
+        except Exception as e:
             print(f"Error scraping DoneDeal: {e}")
         
         return listings
     
     def scrape_usedcarsni(self) -> List[Dict[str, str]]:
         """
-        Scrape minibus listings from UsedCarsNI.
+        Scrape minibus listings from UsedCarsNI with comprehensive data extraction.
         
         Returns:
             List of dictionaries containing listing data
@@ -161,8 +322,11 @@ class MiniBusScraper:
         
         try:
             print(f"\nScraping UsedCarsNI: {search_url}")
-            response = requests.get(search_url, headers=self.get_random_headers(), timeout=30)
-            response.raise_for_status()
+            response = self.make_request_with_retry(search_url)
+            
+            if not response:
+                print("Failed to retrieve UsedCarsNI listings")
+                return listings
             
             soup = BeautifulSoup(response.content, 'html.parser')
             
@@ -172,6 +336,10 @@ class MiniBusScraper:
             if not listing_cards:
                 # Try alternative selectors
                 listing_cards = soup.find_all('article')
+            
+            if not listing_cards:
+                # Try li tags with card class
+                listing_cards = soup.find_all('li', class_='card')
             
             print(f"Found {len(listing_cards)} potential listings on UsedCarsNI")
             
@@ -188,16 +356,53 @@ class MiniBusScraper:
                     title_tag = card.find(['h3', 'h2', 'h4'])
                     title = title_tag.get_text(strip=True) if title_tag else "Unknown Title"
                     
-                    # Extract price
-                    price_tag = card.find(class_=['price', 'vehicle-price'])
+                    # Extract price (UsedCarsNI uses £)
+                    price_tag = card.find(class_=['price', 'vehicle-price', 'card__price'])
                     if not price_tag:
                         price_tag = card.find(string=lambda text: text and '£' in text)
-                    price = price_tag.get_text(strip=True) if price_tag else "Price on request"
+                    price = price_tag.get_text(strip=True) if price_tag else None
+                    
+                    # Extract year
+                    year = self.extract_field_from_card(card, ['year', 'reg-year', 'card__year'])
+                    
+                    # Extract mileage
+                    mileage = self.extract_field_from_card(card, ['mileage', 'odometer', 'card__mileage', 'miles'])
+                    
+                    # Extract number of seats
+                    num_seats = self.extract_field_from_card(card, ['seats', 'seater', 'capacity'])
+                    
+                    # Extract fuel type
+                    fuel_type = self.extract_field_from_card(card, ['fuel', 'fuel-type', 'diesel', 'petrol'])
+                    
+                    # Extract transmission
+                    transmission = self.extract_field_from_card(card, ['transmission', 'gearbox', 'manual', 'automatic'])
+                    
+                    # Extract color
+                    color = self.extract_field_from_card(card, ['colour', 'color'])
+                    
+                    # Extract location
+                    location = self.extract_field_from_card(card, ['location', 'county', 'area', 'card__county'])
+                    
+                    # Extract seller type
+                    seller_type = self.extract_field_from_card(card, ['seller', 'dealer', 'private', 'trade'])
+                    
+                    # Extract description snippet if available
+                    description_tag = card.find(class_=['description', 'card__description', 'excerpt'])
+                    description = description_tag.get_text(strip=True) if description_tag else None
                     
                     listings.append({
                         'url': url,
                         'title': title,
                         'price': price,
+                        'year': year,
+                        'mileage': mileage,
+                        'num_seats': num_seats,
+                        'fuel_type': fuel_type,
+                        'transmission': transmission,
+                        'color': color,
+                        'location': location,
+                        'seller_type': seller_type,
+                        'description': description,
                         'source': 'UsedCarsNI'
                     })
                 except Exception as e:
@@ -206,7 +411,7 @@ class MiniBusScraper:
             
             print(f"Successfully extracted {len(listings)} listings from UsedCarsNI")
             
-        except requests.RequestException as e:
+        except Exception as e:
             print(f"Error scraping UsedCarsNI: {e}")
         
         return listings
@@ -242,23 +447,42 @@ class MiniBusScraper:
             existing = cursor.fetchone()
             
             if existing:
-                # Update existing listing
+                # Update existing listing with all fields
                 cursor.execute('''
                     UPDATE listings 
                     SET last_seen_date = ?,
                         title = ?,
                         price = ?,
+                        year = ?,
+                        mileage = ?,
+                        num_seats = ?,
+                        fuel_type = ?,
+                        transmission = ?,
+                        color = ?,
+                        location = ?,
+                        seller_type = ?,
+                        description = ?,
                         is_active = 1
                     WHERE url = ?
-                ''', (today, listing['title'], listing['price'], url))
-                print(f"Updated: {listing['title'][:50]}...")
+                ''', (today, listing.get('title'), listing.get('price'), 
+                      listing.get('year'), listing.get('mileage'), listing.get('num_seats'),
+                      listing.get('fuel_type'), listing.get('transmission'), listing.get('color'),
+                      listing.get('location'), listing.get('seller_type'), listing.get('description'),
+                      url))
+                print(f"Updated: {listing.get('title', 'Unknown')[:50]}...")
             else:
-                # Insert new listing
+                # Insert new listing with all fields
                 cursor.execute('''
-                    INSERT INTO listings (url, title, price, first_seen_date, last_seen_date, is_active)
-                    VALUES (?, ?, ?, ?, ?, 1)
-                ''', (url, listing['title'], listing['price'], today, today))
-                print(f"Added new: {listing['title'][:50]}...")
+                    INSERT INTO listings (url, title, price, year, mileage, num_seats, 
+                                        fuel_type, transmission, color, location, seller_type, 
+                                        description, first_seen_date, last_seen_date, is_active)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+                ''', (url, listing.get('title'), listing.get('price'), 
+                      listing.get('year'), listing.get('mileage'), listing.get('num_seats'),
+                      listing.get('fuel_type'), listing.get('transmission'), listing.get('color'),
+                      listing.get('location'), listing.get('seller_type'), listing.get('description'),
+                      today, today))
+                print(f"Added new: {listing.get('title', 'Unknown')[:50]}...")
         
         # Mark listings not found in current scrape as inactive
         missing_urls = active_urls - found_urls
@@ -321,8 +545,10 @@ class MiniBusScraper:
         # Convert is_active from 0/1 to False/True for better readability
         df['is_active'] = df['is_active'].astype(bool)
         
-        # Reorder columns for better readability
-        columns = ['url', 'title', 'price', 'first_seen_date', 'last_seen_date', 
+        # Reorder columns for better readability (all vehicle data fields included)
+        columns = ['url', 'title', 'price', 'year', 'mileage', 'num_seats', 
+                   'fuel_type', 'transmission', 'color', 'location', 'seller_type',
+                   'description', 'first_seen_date', 'last_seen_date', 
                    'duration_days', 'is_active']
         df = df[columns]
         

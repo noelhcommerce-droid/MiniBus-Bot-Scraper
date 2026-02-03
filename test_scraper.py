@@ -31,12 +31,30 @@ def test_database_operations():
             'url': 'https://example.com/listing1',
             'title': 'Mercedes Sprinter Minibus 2018',
             'price': '€25,000',
+            'year': '2018',
+            'mileage': '85,000 km',
+            'num_seats': '16',
+            'fuel_type': 'Diesel',
+            'transmission': 'Manual',
+            'color': 'White',
+            'location': 'Dublin',
+            'seller_type': 'Dealer',
+            'description': 'Well maintained minibus',
             'source': 'TestSite'
         },
         {
             'url': 'https://example.com/listing2',
             'title': 'Ford Transit Minibus 2019',
             'price': '€28,000',
+            'year': '2019',
+            'mileage': '65,000 km',
+            'num_seats': '14',
+            'fuel_type': 'Diesel',
+            'transmission': 'Automatic',
+            'color': 'Silver',
+            'location': 'Cork',
+            'seller_type': 'Private',
+            'description': 'Low mileage, excellent condition',
             'source': 'TestSite'
         }
     ]
@@ -50,12 +68,30 @@ def test_database_operations():
             'url': 'https://example.com/listing1',
             'title': 'Mercedes Sprinter Minibus 2018 - UPDATED',
             'price': '€24,500',
+            'year': '2018',
+            'mileage': '86,000 km',
+            'num_seats': '16',
+            'fuel_type': 'Diesel',
+            'transmission': 'Manual',
+            'color': 'White',
+            'location': 'Dublin',
+            'seller_type': 'Dealer',
+            'description': 'Price reduced! Well maintained minibus',
             'source': 'TestSite'
         },
         {
             'url': 'https://example.com/listing3',
             'title': 'Volkswagen Crafter Minibus 2020',
             'price': '€32,000',
+            'year': '2020',
+            'mileage': '45,000 km',
+            'num_seats': '17',
+            'fuel_type': 'Diesel',
+            'transmission': 'Manual',
+            'color': 'Blue',
+            'location': 'Galway',
+            'seller_type': 'Dealer',
+            'description': 'Nearly new condition',
             'source': 'TestSite'
         }
     ]
@@ -98,11 +134,16 @@ def test_database_operations():
     # Test 5: Verify Excel structure
     print("\n5. Verifying Excel file structure...")
     df_excel = pd.read_excel(test_excel, engine='openpyxl')
-    expected_columns = ['url', 'title', 'price', 'first_seen_date', 'last_seen_date', 'duration_days', 'is_active']
+    expected_columns = ['url', 'title', 'price', 'year', 'mileage', 'num_seats', 
+                       'fuel_type', 'transmission', 'color', 'location', 'seller_type',
+                       'description', 'first_seen_date', 'last_seen_date', 'duration_days', 'is_active']
     assert list(df_excel.columns) == expected_columns, f"Excel columns mismatch. Expected {expected_columns}, got {list(df_excel.columns)}"
     assert 'duration_days' in df_excel.columns, "duration_days column missing from Excel"
+    assert 'year' in df_excel.columns, "year column missing from Excel"
+    assert 'mileage' in df_excel.columns, "mileage column missing from Excel"
+    assert 'num_seats' in df_excel.columns, "num_seats column missing from Excel"
     assert len(df_excel) == 3, f"Expected 3 rows in Excel, found {len(df_excel)}"
-    print(f"✓ Excel file has correct structure with {len(df_excel)} rows")
+    print(f"✓ Excel file has correct structure with {len(df_excel)} rows and all data fields")
     
     print("\n✓ All tests passed!")
     print(f"✓ Database created: {test_db}")
