@@ -308,7 +308,15 @@ class MiniBusScraper:
         # Calculate duration in days
         df['first_seen_date'] = pd.to_datetime(df['first_seen_date'])
         df['last_seen_date'] = pd.to_datetime(df['last_seen_date'])
-        df['duration_days'] = (df['last_seen_date'] - df['first_seen_date']).dt.days
+        
+        # For active listings, duration is from first_seen to today
+        # For inactive listings, duration is from first_seen to last_seen
+        today = pd.Timestamp(date.today())
+        df['duration_days'] = df.apply(
+            lambda row: (today - row['first_seen_date']).days if row['is_active'] == 1 
+            else (row['last_seen_date'] - row['first_seen_date']).days,
+            axis=1
+        )
         
         # Convert is_active from 0/1 to False/True for better readability
         df['is_active'] = df['is_active'].astype(bool)
@@ -323,7 +331,13 @@ class MiniBusScraper:
         print(f"\nExported {len(df)} listings to {output_file}")
         print(f"  Active: {df['is_active'].sum()}")
         print(f"  Inactive: {(~df['is_active']).sum()}")
-        print(f"  Average duration: {df['duration_days'].mean():.1f} days")
+        
+        # Calculate and display average duration if there are valid values
+        avg_duration = df['duration_days'].mean()
+        if pd.notna(avg_duration):
+            print(f"  Average duration: {avg_duration:.1f} days")
+        else:
+            print(f"  Average duration: N/A")
     
     def run(self):
         """

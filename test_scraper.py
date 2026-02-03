@@ -62,6 +62,18 @@ def test_database_operations():
     
     scraper.update_database(test_listings_day2)
     
+    # Verify that listing2 was marked as inactive
+    print("\n2.5. Verifying inactive listing...")
+    import sqlite3
+    conn = sqlite3.connect(test_db)
+    cursor = conn.cursor()
+    cursor.execute("SELECT is_active FROM listings WHERE url = ?", ('https://example.com/listing2',))
+    result = cursor.fetchone()
+    conn.close()
+    assert result is not None, "listing2 should exist in database"
+    assert result[0] == 0, "listing2 should be marked as inactive (is_active=0)"
+    print("✓ listing2 correctly marked as inactive")
+    
     # Test 3: Export to Excel
     print("\n3. Testing Excel export...")
     test_excel = "test_output.xlsx"
@@ -70,6 +82,27 @@ def test_database_operations():
     # Verify files were created
     assert os.path.exists(test_db), "Database file was not created"
     assert os.path.exists(test_excel), "Excel file was not created"
+    
+    # Test 4: Verify database contents
+    print("\n4. Verifying database contents...")
+    import pandas as pd
+    conn = sqlite3.connect(test_db)
+    df = pd.read_sql_query("SELECT * FROM listings", conn)
+    conn.close()
+    
+    assert len(df) == 3, f"Expected 3 listings, found {len(df)}"
+    assert df['is_active'].sum() == 2, f"Expected 2 active listings, found {df['is_active'].sum()}"
+    assert (df['is_active'] == 0).sum() == 1, f"Expected 1 inactive listing, found {(df['is_active'] == 0).sum()}"
+    print(f"✓ Database has {len(df)} listings (2 active, 1 inactive)")
+    
+    # Test 5: Verify Excel structure
+    print("\n5. Verifying Excel file structure...")
+    df_excel = pd.read_excel(test_excel, engine='openpyxl')
+    expected_columns = ['url', 'title', 'price', 'first_seen_date', 'last_seen_date', 'duration_days', 'is_active']
+    assert list(df_excel.columns) == expected_columns, f"Excel columns mismatch. Expected {expected_columns}, got {list(df_excel.columns)}"
+    assert 'duration_days' in df_excel.columns, "duration_days column missing from Excel"
+    assert len(df_excel) == 3, f"Expected 3 rows in Excel, found {len(df_excel)}"
+    print(f"✓ Excel file has correct structure with {len(df_excel)} rows")
     
     print("\n✓ All tests passed!")
     print(f"✓ Database created: {test_db}")
