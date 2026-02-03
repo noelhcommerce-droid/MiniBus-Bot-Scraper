@@ -2,6 +2,20 @@
 
 A Python-based web scraper for Irish minibus listings that scrapes comprehensive data from DoneDeal and UsedCarsNI, stores it in a SQLite database, and exports to Excel with duration tracking.
 
+## Scraped Websites
+
+This bot currently scrapes minibus listings from two Irish websites:
+
+1. **[DoneDeal](https://www.donedeal.ie)** 
+   - URL: `https://www.donedeal.ie/cars?bodyType=Minibus`
+   - Coverage: Republic of Ireland
+   - Currency: Euro (€)
+
+2. **[UsedCarsNI](https://www.usedcarsni.com)**
+   - URL: `https://www.usedcarsni.com/search?bodytype=minibus`
+   - Coverage: Northern Ireland
+   - Currency: Pound Sterling (£)
+
 ## Features
 
 - **Multi-source scraping**: Scrapes minibus listings from DoneDeal and UsedCarsNI

@@ -1,5 +1,19 @@
 # Usage Guide for MiniBus-Bot-Scraper
 
+## What Sites Are Scraped?
+
+The bot scrapes minibus listings from two Irish websites:
+
+1. **DoneDeal (Republic of Ireland)**
+   - URL: https://www.donedeal.ie/cars?bodyType=Minibus
+   - Currency: Euro (€)
+   - Listings: Irish minibus classified ads
+
+2. **UsedCarsNI (Northern Ireland)**
+   - URL: https://www.usedcarsni.com/search?bodytype=minibus
+   - Currency: Pound Sterling (£)
+   - Listings: Northern Ireland used minibuses
+
 ## Quick Start
 
 ### Local Development

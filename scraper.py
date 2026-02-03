@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
 """
 Irish Minibus Listings Scraper
-Scrapes minibus listings from DoneDeal and UsedCarsNI, stores them in SQLite,
-and exports to Excel with duration tracking.
+
+Scrapes minibus listings from two Irish websites:
+1. DoneDeal (https://www.donedeal.ie) - Republic of Ireland, Euro (€)
+2. UsedCarsNI (https://www.usedcarsni.com) - Northern Ireland, Pound (£)
+
+Stores listings in SQLite database and exports to Excel with duration tracking.
 """
 
 import sqlite3
@@ -17,7 +21,13 @@ from urllib.parse import urljoin
 
 
 class MiniBusScraper:
-    """Scraper for Irish minibus listings with database persistence."""
+    """
+    Scraper for Irish minibus listings with database persistence.
+    
+    Scraped Sites:
+    - DoneDeal (donedeal.ie): Irish classified ads for minibuses
+    - UsedCarsNI (usedcarsni.com): Northern Ireland used minibus listings
+    """
     
     def __init__(self, db_path: str = "minibus_listings.db"):
         """
