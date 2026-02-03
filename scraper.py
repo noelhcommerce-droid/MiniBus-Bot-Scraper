@@ -1,12 +1,17 @@
 #!/usr/bin/env python3
 """
-Irish Minibus Listings Scraper
+Irish Minibus/Coach Listings Scraper
 
-Scrapes minibus listings from two Irish websites:
-1. DoneDeal (https://www.donedeal.ie) - Republic of Ireland, Euro (€)
+Scrapes minibus and coach listings from six Irish websites:
+1. DoneDeal (https://www.donedeal.ie/coaches) - Republic of Ireland, Euro (€)
 2. UsedCarsNI (https://www.usedcarsni.com) - Northern Ireland, Pound (£)
+3. Carzone (https://www.carzone.ie) - Commercials/Sprinter, Euro (€)
+4. CarsIreland (https://www.carsireland.ie) - Minibus body type, Euro (€)
+5. Adverts.ie (https://www.adverts.ie) - Keyword search, Euro (€)
+6. Autoline24.ie (https://www.autoline24.ie) - Commercial vehicles, Euro (€)
 
 Stores listings in SQLite database and exports to Excel with duration tracking.
+Recommended to run every 6 hours for optimal tracking.
 """
 
 import sqlite3
@@ -22,11 +27,15 @@ from urllib.parse import urljoin
 
 class MiniBusScraper:
     """
-    Scraper for Irish minibus listings with database persistence.
+    Scraper for Irish minibus/coach listings with database persistence.
     
     Scraped Sites:
-    - DoneDeal (donedeal.ie): Irish classified ads for minibuses
+    - DoneDeal (donedeal.ie): Coaches & buses category
     - UsedCarsNI (usedcarsni.com): Northern Ireland used minibus listings
+    - Carzone (carzone.ie): Commercial vehicles, Mercedes Sprinter focus
+    - CarsIreland (carsireland.ie): Minibus body type filter
+    - Adverts.ie (adverts.ie): Keyword-based minibus search
+    - Autoline24.ie (autoline24.ie): Commercial vehicle listings
     """
     
     def __init__(self, db_path: str = "minibus_listings.db"):
@@ -213,14 +222,15 @@ class MiniBusScraper:
     
     def scrape_donedeal(self) -> List[Dict[str, str]]:
         """
-        Scrape minibus listings from DoneDeal with comprehensive data extraction.
+        Scrape coach/bus listings from DoneDeal with comprehensive data extraction.
+        Now targets the Coaches category instead of car minibuses.
         
         Returns:
             List of dictionaries containing listing data
         """
         listings = []
         base_url = "https://www.donedeal.ie"
-        search_url = f"{base_url}/cars?bodyType=Minibus"
+        search_url = f"{base_url}/coaches"  # Changed to coaches category
         
         try:
             print(f"\nScraping DoneDeal: {search_url}")
@@ -426,6 +436,458 @@ class MiniBusScraper:
         
         return listings
     
+    def scrape_carzone(self) -> List[Dict[str, str]]:
+        """
+        Scrape commercial vehicle/Sprinter listings from Carzone.
+        Targets Mercedes-Benz Sprinter commercials with year-based URLs.
+        
+        Returns:
+            List of dictionaries containing listing data
+        """
+        listings = []
+        base_url = "https://www.carzone.ie"
+        
+        # Try general commercials search and Sprinter-specific searches
+        search_urls = [
+            f"{base_url}/commercials/used/mercedes-benz/sprinter",
+            f"{base_url}/commercials/minibus",
+            f"{base_url}/search/minibus"
+        ]
+        
+        for search_url in search_urls:
+            try:
+                print(f"\nScraping Carzone: {search_url}")
+                response = self.make_request_with_retry(search_url)
+                
+                if not response:
+                    print(f"Failed to retrieve Carzone listings from {search_url}")
+                    continue
+                
+                soup = BeautifulSoup(response.content, 'html.parser')
+                
+                # Carzone listings - try various selectors
+                listing_cards = soup.find_all('div', class_=['vehicle-card', 'car-listing', 'listing-item'])
+                
+                if not listing_cards:
+                    listing_cards = soup.find_all('article', class_=['listing', 'vehicle'])
+                
+                if not listing_cards:
+                    listing_cards = soup.find_all('li', class_='card')
+                
+                print(f"Found {len(listing_cards)} potential listings on Carzone")
+                
+                for card in listing_cards:
+                    try:
+                        # Extract URL
+                        link_tag = card.find('a', href=True)
+                        if not link_tag:
+                            continue
+                        
+                        url = urljoin(base_url, link_tag['href'])
+                        
+                        # Skip if already in listings
+                        if any(l['url'] == url for l in listings):
+                            continue
+                        
+                        # Extract title
+                        title_tag = card.find(['h3', 'h2', 'h4'])
+                        title = title_tag.get_text(strip=True) if title_tag else "Unknown Title"
+                        
+                        # Extract price (Carzone uses €)
+                        price_tag = card.find(class_=['price', 'vehicle-price', 'listing-price'])
+                        if not price_tag:
+                            price_tag = card.find(string=lambda text: text and '€' in text)
+                        price = price_tag.get_text(strip=True) if price_tag else None
+                        
+                        # Extract year
+                        year = self.extract_field_from_card(card, ['year', 'reg-year', 'registration'])
+                        
+                        # Extract mileage
+                        mileage = self.extract_field_from_card(card, ['mileage', 'odometer', 'km'])
+                        
+                        # Extract number of seats
+                        num_seats = self.extract_field_from_card(card, ['seats', 'seater', 'capacity'])
+                        
+                        # Extract fuel type
+                        fuel_type = self.extract_field_from_card(card, ['fuel', 'fuel-type', 'diesel', 'petrol'])
+                        
+                        # Extract transmission
+                        transmission = self.extract_field_from_card(card, ['transmission', 'gearbox', 'manual', 'automatic'])
+                        
+                        # Extract color
+                        color = self.extract_field_from_card(card, ['colour', 'color'])
+                        
+                        # Extract location
+                        location = self.extract_field_from_card(card, ['location', 'county', 'area'])
+                        
+                        # Extract seller type
+                        seller_type = self.extract_field_from_card(card, ['seller', 'dealer', 'private', 'trade'])
+                        
+                        # Extract description snippet if available
+                        description_tag = card.find(class_=['description', 'card__description', 'excerpt'])
+                        description = description_tag.get_text(strip=True) if description_tag else None
+                        
+                        listings.append({
+                            'url': url,
+                            'title': title,
+                            'price': price,
+                            'year': year,
+                            'mileage': mileage,
+                            'num_seats': num_seats,
+                            'fuel_type': fuel_type,
+                            'transmission': transmission,
+                            'color': color,
+                            'location': location,
+                            'seller_type': seller_type,
+                            'description': description,
+                            'source': 'Carzone'
+                        })
+                    except Exception as e:
+                        print(f"Error parsing Carzone listing: {e}")
+                        continue
+                
+                # Polite delay between different URL attempts
+                if search_url != search_urls[-1]:
+                    self.polite_sleep(1.0, 2.0)
+                
+            except Exception as e:
+                print(f"Error scraping Carzone from {search_url}: {e}")
+                continue
+        
+        print(f"Successfully extracted {len(listings)} unique listings from Carzone")
+        return listings
+    
+    def scrape_carsireland(self) -> List[Dict[str, str]]:
+        """
+        Scrape minibus listings from CarsIreland using minibus body-type filter.
+        
+        Returns:
+            List of dictionaries containing listing data
+        """
+        listings = []
+        base_url = "https://www.carsireland.ie"
+        search_url = f"{base_url}/used-cars/minibus"
+        
+        try:
+            print(f"\nScraping CarsIreland: {search_url}")
+            response = self.make_request_with_retry(search_url)
+            
+            if not response:
+                print("Failed to retrieve CarsIreland listings")
+                return listings
+            
+            soup = BeautifulSoup(response.content, 'html.parser')
+            
+            # CarsIreland listings - try various selectors
+            listing_cards = soup.find_all('div', class_=['car-item', 'vehicle-card', 'listing'])
+            
+            if not listing_cards:
+                listing_cards = soup.find_all('article', class_=['car', 'vehicle'])
+            
+            if not listing_cards:
+                listing_cards = soup.find_all('li', class_='card')
+            
+            print(f"Found {len(listing_cards)} potential listings on CarsIreland")
+            
+            for card in listing_cards:
+                try:
+                    # Extract URL
+                    link_tag = card.find('a', href=True)
+                    if not link_tag:
+                        continue
+                    
+                    url = urljoin(base_url, link_tag['href'])
+                    
+                    # Extract title
+                    title_tag = card.find(['h3', 'h2', 'h4'])
+                    title = title_tag.get_text(strip=True) if title_tag else "Unknown Title"
+                    
+                    # Extract price (CarsIreland uses €)
+                    price_tag = card.find(class_=['price', 'vehicle-price', 'listing-price'])
+                    if not price_tag:
+                        price_tag = card.find(string=lambda text: text and '€' in text)
+                    price = price_tag.get_text(strip=True) if price_tag else None
+                    
+                    # Extract year
+                    year = self.extract_field_from_card(card, ['year', 'reg-year', 'registration'])
+                    
+                    # Extract mileage
+                    mileage = self.extract_field_from_card(card, ['mileage', 'odometer', 'km'])
+                    
+                    # Extract number of seats
+                    num_seats = self.extract_field_from_card(card, ['seats', 'seater', 'capacity'])
+                    
+                    # Extract fuel type
+                    fuel_type = self.extract_field_from_card(card, ['fuel', 'fuel-type', 'diesel', 'petrol'])
+                    
+                    # Extract transmission
+                    transmission = self.extract_field_from_card(card, ['transmission', 'gearbox', 'manual', 'automatic'])
+                    
+                    # Extract color
+                    color = self.extract_field_from_card(card, ['colour', 'color'])
+                    
+                    # Extract location
+                    location = self.extract_field_from_card(card, ['location', 'county', 'area'])
+                    
+                    # Extract seller type
+                    seller_type = self.extract_field_from_card(card, ['seller', 'dealer', 'private', 'trade'])
+                    
+                    # Extract description snippet if available
+                    description_tag = card.find(class_=['description', 'card__description', 'excerpt'])
+                    description = description_tag.get_text(strip=True) if description_tag else None
+                    
+                    listings.append({
+                        'url': url,
+                        'title': title,
+                        'price': price,
+                        'year': year,
+                        'mileage': mileage,
+                        'num_seats': num_seats,
+                        'fuel_type': fuel_type,
+                        'transmission': transmission,
+                        'color': color,
+                        'location': location,
+                        'seller_type': seller_type,
+                        'description': description,
+                        'source': 'CarsIreland'
+                    })
+                except Exception as e:
+                    print(f"Error parsing CarsIreland listing: {e}")
+                    continue
+            
+            print(f"Successfully extracted {len(listings)} listings from CarsIreland")
+            
+        except Exception as e:
+            print(f"Error scraping CarsIreland: {e}")
+        
+        return listings
+    
+    def scrape_adverts(self) -> List[Dict[str, str]]:
+        """
+        Scrape minibus listings from Adverts.ie using keyword search.
+        Adverts.ie is keyword-heavy, used by many private sellers.
+        
+        Returns:
+            List of dictionaries containing listing data
+        """
+        listings = []
+        base_url = "https://www.adverts.ie"
+        search_url = f"{base_url}/results/minibus"
+        
+        try:
+            print(f"\nScraping Adverts.ie: {search_url}")
+            response = self.make_request_with_retry(search_url)
+            
+            if not response:
+                print("Failed to retrieve Adverts.ie listings")
+                return listings
+            
+            soup = BeautifulSoup(response.content, 'html.parser')
+            
+            # Adverts.ie listings - try various selectors
+            listing_cards = soup.find_all('div', class_=['advert', 'listing-item', 'result-item'])
+            
+            if not listing_cards:
+                listing_cards = soup.find_all('li', class_=['listing', 'ad'])
+            
+            if not listing_cards:
+                listing_cards = soup.find_all('article')
+            
+            print(f"Found {len(listing_cards)} potential listings on Adverts.ie")
+            
+            for card in listing_cards:
+                try:
+                    # Extract URL
+                    link_tag = card.find('a', href=True)
+                    if not link_tag:
+                        continue
+                    
+                    url = urljoin(base_url, link_tag['href'])
+                    
+                    # Extract title
+                    title_tag = card.find(['h3', 'h2', 'h4', 'a'])
+                    title = title_tag.get_text(strip=True) if title_tag else "Unknown Title"
+                    
+                    # Extract price (Adverts.ie uses €)
+                    price_tag = card.find(class_=['price', 'advert-price', 'listing-price'])
+                    if not price_tag:
+                        price_tag = card.find(string=lambda text: text and '€' in text)
+                    price = price_tag.get_text(strip=True) if price_tag else None
+                    
+                    # Extract year
+                    year = self.extract_field_from_card(card, ['year', 'reg-year', 'registration'])
+                    
+                    # Extract mileage
+                    mileage = self.extract_field_from_card(card, ['mileage', 'odometer', 'km'])
+                    
+                    # Extract number of seats
+                    num_seats = self.extract_field_from_card(card, ['seats', 'seater', 'capacity'])
+                    
+                    # Extract fuel type
+                    fuel_type = self.extract_field_from_card(card, ['fuel', 'fuel-type', 'diesel', 'petrol'])
+                    
+                    # Extract transmission
+                    transmission = self.extract_field_from_card(card, ['transmission', 'gearbox', 'manual', 'automatic'])
+                    
+                    # Extract color
+                    color = self.extract_field_from_card(card, ['colour', 'color'])
+                    
+                    # Extract location
+                    location = self.extract_field_from_card(card, ['location', 'county', 'area'])
+                    
+                    # Extract seller type
+                    seller_type = self.extract_field_from_card(card, ['seller', 'dealer', 'private', 'trade'])
+                    
+                    # Extract description snippet if available
+                    description_tag = card.find(class_=['description', 'card__description', 'excerpt', 'advert-description'])
+                    description = description_tag.get_text(strip=True) if description_tag else None
+                    
+                    listings.append({
+                        'url': url,
+                        'title': title,
+                        'price': price,
+                        'year': year,
+                        'mileage': mileage,
+                        'num_seats': num_seats,
+                        'fuel_type': fuel_type,
+                        'transmission': transmission,
+                        'color': color,
+                        'location': location,
+                        'seller_type': seller_type,
+                        'description': description,
+                        'source': 'Adverts.ie'
+                    })
+                except Exception as e:
+                    print(f"Error parsing Adverts.ie listing: {e}")
+                    continue
+            
+            print(f"Successfully extracted {len(listings)} listings from Adverts.ie")
+            
+        except Exception as e:
+            print(f"Error scraping Adverts.ie: {e}")
+        
+        return listings
+    
+    def scrape_autoline24(self) -> List[Dict[str, str]]:
+        """
+        Scrape commercial vehicle/minibus listings from Autoline24.ie.
+        
+        Returns:
+            List of dictionaries containing listing data
+        """
+        listings = []
+        base_url = "https://www.autoline24.ie"
+        
+        # Try multiple possible URLs for minibus/commercial vehicles
+        search_urls = [
+            f"{base_url}/minibus",
+            f"{base_url}/commercial-vehicles/minibus",
+            f"{base_url}/search?q=minibus"
+        ]
+        
+        for search_url in search_urls:
+            try:
+                print(f"\nScraping Autoline24: {search_url}")
+                response = self.make_request_with_retry(search_url)
+                
+                if not response:
+                    print(f"Failed to retrieve Autoline24 listings from {search_url}")
+                    continue
+                
+                soup = BeautifulSoup(response.content, 'html.parser')
+                
+                # Autoline24 listings - try various selectors
+                listing_cards = soup.find_all('div', class_=['vehicle', 'listing', 'offer'])
+                
+                if not listing_cards:
+                    listing_cards = soup.find_all('article', class_=['vehicle-card', 'listing'])
+                
+                if not listing_cards:
+                    listing_cards = soup.find_all('li', class_=['card', 'item'])
+                
+                print(f"Found {len(listing_cards)} potential listings on Autoline24")
+                
+                for card in listing_cards:
+                    try:
+                        # Extract URL
+                        link_tag = card.find('a', href=True)
+                        if not link_tag:
+                            continue
+                        
+                        url = urljoin(base_url, link_tag['href'])
+                        
+                        # Skip if already in listings
+                        if any(l['url'] == url for l in listings):
+                            continue
+                        
+                        # Extract title
+                        title_tag = card.find(['h3', 'h2', 'h4'])
+                        title = title_tag.get_text(strip=True) if title_tag else "Unknown Title"
+                        
+                        # Extract price (Autoline24 uses €)
+                        price_tag = card.find(class_=['price', 'vehicle-price', 'listing-price'])
+                        if not price_tag:
+                            price_tag = card.find(string=lambda text: text and '€' in text)
+                        price = price_tag.get_text(strip=True) if price_tag else None
+                        
+                        # Extract year
+                        year = self.extract_field_from_card(card, ['year', 'reg-year', 'registration'])
+                        
+                        # Extract mileage
+                        mileage = self.extract_field_from_card(card, ['mileage', 'odometer', 'km'])
+                        
+                        # Extract number of seats
+                        num_seats = self.extract_field_from_card(card, ['seats', 'seater', 'capacity'])
+                        
+                        # Extract fuel type
+                        fuel_type = self.extract_field_from_card(card, ['fuel', 'fuel-type', 'diesel', 'petrol'])
+                        
+                        # Extract transmission
+                        transmission = self.extract_field_from_card(card, ['transmission', 'gearbox', 'manual', 'automatic'])
+                        
+                        # Extract color
+                        color = self.extract_field_from_card(card, ['colour', 'color'])
+                        
+                        # Extract location
+                        location = self.extract_field_from_card(card, ['location', 'county', 'area'])
+                        
+                        # Extract seller type
+                        seller_type = self.extract_field_from_card(card, ['seller', 'dealer', 'private', 'trade'])
+                        
+                        # Extract description snippet if available
+                        description_tag = card.find(class_=['description', 'card__description', 'excerpt'])
+                        description = description_tag.get_text(strip=True) if description_tag else None
+                        
+                        listings.append({
+                            'url': url,
+                            'title': title,
+                            'price': price,
+                            'year': year,
+                            'mileage': mileage,
+                            'num_seats': num_seats,
+                            'fuel_type': fuel_type,
+                            'transmission': transmission,
+                            'color': color,
+                            'location': location,
+                            'seller_type': seller_type,
+                            'description': description,
+                            'source': 'Autoline24'
+                        })
+                    except Exception as e:
+                        print(f"Error parsing Autoline24 listing: {e}")
+                        continue
+                
+                # Polite delay between different URL attempts
+                if search_url != search_urls[-1]:
+                    self.polite_sleep(1.0, 2.0)
+                
+            except Exception as e:
+                print(f"Error scraping Autoline24 from {search_url}: {e}")
+                continue
+        
+        print(f"Successfully extracted {len(listings)} unique listings from Autoline24")
+        return listings
+    
     def update_database(self, listings: List[Dict[str, str]]):
         """
         Update database with scraped listings following the logic:
@@ -577,16 +1039,19 @@ class MiniBusScraper:
     
     def run(self):
         """
-        Main execution method - scrapes all sources, updates database, exports to Excel.
+        Main execution method - scrapes all 6 sources, updates database, exports to Excel.
+        Recommended to run every 6 hours for optimal tracking.
         """
         print("=" * 60)
-        print("Irish Minibus Listings Scraper")
+        print("Irish Minibus/Coach Listings Scraper")
         print(f"Started at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        print("Scraping from 6 sources: DoneDeal, UsedCarsNI, Carzone,")
+        print("CarsIreland, Adverts.ie, Autoline24")
         print("=" * 60)
         
         all_listings = []
         
-        # Scrape DoneDeal
+        # Scrape DoneDeal (Coaches category)
         donedeal_listings = self.scrape_donedeal()
         all_listings.extend(donedeal_listings)
         self.polite_sleep()
@@ -594,11 +1059,35 @@ class MiniBusScraper:
         # Scrape UsedCarsNI
         usedcarsni_listings = self.scrape_usedcarsni()
         all_listings.extend(usedcarsni_listings)
+        self.polite_sleep()
+        
+        # Scrape Carzone
+        carzone_listings = self.scrape_carzone()
+        all_listings.extend(carzone_listings)
+        self.polite_sleep()
+        
+        # Scrape CarsIreland
+        carsireland_listings = self.scrape_carsireland()
+        all_listings.extend(carsireland_listings)
+        self.polite_sleep()
+        
+        # Scrape Adverts.ie
+        adverts_listings = self.scrape_adverts()
+        all_listings.extend(adverts_listings)
+        self.polite_sleep()
+        
+        # Scrape Autoline24
+        autoline24_listings = self.scrape_autoline24()
+        all_listings.extend(autoline24_listings)
         
         print(f"\n{'=' * 60}")
         print(f"Total listings scraped: {len(all_listings)}")
         print(f"  DoneDeal: {len(donedeal_listings)}")
         print(f"  UsedCarsNI: {len(usedcarsni_listings)}")
+        print(f"  Carzone: {len(carzone_listings)}")
+        print(f"  CarsIreland: {len(carsireland_listings)}")
+        print(f"  Adverts.ie: {len(adverts_listings)}")
+        print(f"  Autoline24: {len(autoline24_listings)}")
         print(f"{'=' * 60}\n")
         
         # Update database
@@ -612,6 +1101,7 @@ class MiniBusScraper:
         
         print("\n" + "=" * 60)
         print(f"Scraping completed at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        print("Recommended: Run this scraper every 6 hours for optimal tracking")
         print("=" * 60)
 
 
